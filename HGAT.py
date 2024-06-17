@@ -42,16 +42,16 @@ class DJconv(nn.Module):
         Du_v = torch.diag(Du_v)
         Du_v = Du_v.to(torch.float32)
 
-        Du_e = torch.sum(Hu, dim=0)
-        mask = Du_e.nonzero()
-        for i in mask:
-            Du_e[i] = 1 / torch.sqrt(Du_e[i])
-        Du_e = torch.diag(Du_e)
-        Du_e = Du_e.to(torch.float32)
+        # Du_e = torch.sum(Hu, dim=0)
+        # mask = Du_e.nonzero()
+        # for i in mask:
+        #     Du_e[i] = 1 / torch.sqrt(Du_e[i])
+        # Du_e = torch.diag(Du_e)
+        # Du_e = Du_e.to(torch.float32)
 
         U = U.to(torch.float32)
-        # M_u = torch.linalg.multi_dot([Du_v.cuda(), U]) + U
-        M_u = torch.linalg.multi_dot([Du_v.cuda(), Hu.cuda(), Du_e.cuda(), Du_e.cuda(), Hu.t().cuda(), Du_v.cuda(), U]) + U
+        M_u = torch.linalg.multi_dot([Du_v.cuda(),Du_v.cuda(), U]) + U
+        # M_u = torch.linalg.multi_dot([Du_v.cuda(), Hu.cuda(), Du_e.cuda(), Du_e.cuda(), Hu.t().cuda(), Du_v.cuda(), U]) + U
 
         U_out = torch.matmul(M_u.cuda(), self.weight.cuda()) + self.bias.cuda()
 
