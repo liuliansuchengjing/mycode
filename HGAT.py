@@ -17,6 +17,33 @@ import Constants
 from TransformerBlock import TransformerBlock
 from torch.autograd import Variable
 
+class DJconv(nn.Module):
+    def __init__(self, in_channels, out_channels, layers = 1, bias=True):
+        super(DJconv, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.weight = nn.Parameter(torch.Tensor(in_channels, out_channels))
+        # use xavier initialization
+        nn.init.xavier_uniform_(self.weight)
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels))
+        self.layers = layers
+
+
+    def forward(self, H, U):
+        adj = torch.matmul(H, H.t())
+        item_embeddings = U
+        item_embedding_layer0 = item_embeddings
+        final = [item_embedding_layer0]
+        for i in range(self.layers):
+            item_embeddings = torch.sparse.mm(adj.cuda(), item_embeddings)
+            final.append(item_embeddings)
+        #  final1 = trans_to_cuda(torch.tensor([item.cpu().detach().numpy() for item in final]))
+        #  item_embeddings = torch.sum(final1, 0)
+        item_embeddings = np.sum(final, 0) / (self.layers + 1)
+        item_embeddings = torch.matmul(item_embeddings, self.weight) + self.bias
+        return item_embeddings
 
 def get_previous_user_mask(seq, user_size):
     ''' Mask previous activated users.'''
@@ -107,6 +134,7 @@ class HGNN_ATT(nn.Module):
             self.batch_norm1 = torch.nn.BatchNorm1d(output_size)
         self.gat1 = HGATLayer(input_size, output_size, dropout=self.dropout, transfer=False, concat=True, edge=True)
         self.fus1 = Fusion(output_size)
+        self.hgnn = DJconv(64, 64, 1)
 
     def forward(self, x, hypergraph_list):
         root_emb = F.embedding(hypergraph_list[1].cuda(), x)
@@ -116,6 +144,7 @@ class HGNN_ATT(nn.Module):
         for sub_key in hypergraph_list.keys():
             sub_graph = hypergraph_list[sub_key]
             sub_node_embed, sub_edge_embed = self.gat1(x, sub_graph.cuda(), root_emb)
+            sub_node_embed = self.hgnn(sub_graph, x)
             sub_node_embed = F.dropout(sub_node_embed, self.dropout, training=self.training)
 
             if self.is_norm:
