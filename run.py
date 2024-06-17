@@ -1,4 +1,3 @@
-# -----------------------------------------run.py
 # -*- coding: utf-8 -*-
 """
 Created on Mon Jan 18 22:42:32 2021
@@ -8,15 +7,16 @@ Created on Mon Jan 18 22:42:32 2021
 
 import argparse
 import time
-import numpy as np
+import numpy as np 
 import Constants
 import torch
 import torch.nn as nn
 from graphConstruct import ConRelationGraph, ConHyperGraphList
-from dataLoader import Split_data, DataLoader,WatchCount_list
+from dataLoader import Split_data, DataLoader
 from Metrics import Metrics
 from HGAT import MSHGAT
 from Optim import ScheduledOptim
+
 
 torch.backends.cudnn.deterministic = True
 torch.manual_seed(0)
@@ -25,6 +25,7 @@ np.random.seed(0)
 torch.cuda.manual_seed(0)
 
 metric = Metrics()
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-data_name', default='MOOCCube')
@@ -37,20 +38,18 @@ parser.add_argument('-valid_rate', type=float, default=0.1)
 parser.add_argument('-n_warmup_steps', type=int, default=1000)
 parser.add_argument('-dropout', type=float, default=0.3)
 parser.add_argument('-log', default=None)
-parser.add_argument('-save_path', default="./checkpoint/DiffusionPrediction.pt")
+parser.add_argument('-save_path', default= "./checkpoint/DiffusionPrediction.pt")
 parser.add_argument('-save_mode', type=str, choices=['all', 'best'], default='best')
 parser.add_argument('-no_cuda', action='store_true')
 parser.add_argument('-pos_emb', type=bool, default=True)
 
-opt = parser.parse_args()
+opt = parser.parse_args() 
 opt.d_word_vec = opt.d_model
+#print(opt)
 
-
-# WatchingCount = "/content/MS-HGAT/watching_count.txt"
-# print(opt)
-WatchingCount = "./watching_count.txt"
 
 def get_performance(crit, pred, gold):
+
     loss = crit(pred, gold.contiguous().view(-1))
     pred = pred.max(1)[1]
     gold = gold.contiguous().view(-1)
@@ -60,8 +59,8 @@ def get_performance(crit, pred, gold):
 
 
 def train_epoch(model, training_data, graph, hypergraph_list, loss_func, optimizer):
-    # train
-
+    # train 
+    
     model.train()
 
     total_loss = 0.0
@@ -69,22 +68,21 @@ def train_epoch(model, training_data, graph, hypergraph_list, loss_func, optimiz
     n_total_correct = 0.0
     batch_num = 0.0
 
-    for i, batch in enumerate(
-            training_data):  # tqdm(training_data, mininterval=2, desc='  - (Training)   ', leave=False):
+    for i, batch in enumerate(training_data): # tqdm(training_data, mininterval=2, desc='  - (Training)   ', leave=False):
         # data preparing
         tgt, tgt_timestamp, tgt_idx = (item.cuda() for item in batch)
-
+        
         np.set_printoptions(threshold=np.inf)
         gold = tgt[:, 1:]
 
         n_words = gold.data.ne(Constants.PAD).sum().float()
         n_total_words += n_words
         batch_num += tgt.size(0)
-
+        
         # training
         optimizer.zero_grad()
-        pred = model( tgt, tgt_timestamp, tgt_idx, graph, hypergraph_list)
-
+        pred = model(tgt, tgt_timestamp,tgt_idx, graph, hypergraph_list)
+        
         # loss
         loss, n_correct = get_performance(loss_func, pred, gold)
         loss.backward()
@@ -96,31 +94,25 @@ def train_epoch(model, training_data, graph, hypergraph_list, loss_func, optimiz
         n_total_correct += n_correct
         total_loss += loss.item()
 
-    return total_loss / n_total_words, n_total_correct / n_total_words
-
+    return total_loss/n_total_words, n_total_correct/n_total_words
 
 def train_model(MSHGAT, data_path):
     # ========= Preparing DataLoader =========#
-    user_size, total_cascades, timestamps, train, valid, test = Split_data(data_path, opt.train_rate, opt.valid_rate,
-                                                                           load_dict=True)
-
-
-    WatchCounts = WatchCount_list(data_path, WatchingCount)
-
+    user_size, total_cascades, timestamps, train, valid, test = Split_data(data_path, opt.train_rate, opt.valid_rate, load_dict=True)
+    
     train_data = DataLoader(train, batch_size=opt.batch_size, load_dict=True, cuda=False)
     valid_data = DataLoader(valid, batch_size=opt.batch_size, load_dict=True, cuda=False)
     test_data = DataLoader(test, batch_size=opt.batch_size, load_dict=True, cuda=False)
-
+    
     relation_graph = ConRelationGraph(data_path)
-    # hypergraph_list = ConHyperGraphList(total_cascades, timestamps, user_size)
-    hypergraph_list = ConHyperGraphList(WatchCounts, total_cascades, timestamps, user_size)
+    hypergraph_list = ConHyperGraphList(total_cascades, timestamps, user_size)
 
     opt.user_size = user_size
 
     # ========= Preparing Model =========#
-    model = MSHGAT(opt, dropout=opt.dropout)
+    model = MSHGAT(opt, dropout = opt.dropout)
     loss_func = nn.CrossEntropyLoss(size_average=False, ignore_index=Constants.PAD)
-
+    
     params = model.parameters()
     optimizerAdam = torch.optim.Adam(params, betas=(0.9, 0.98), eps=1e-09)
     optimizer = ScheduledOptim(optimizerAdam, opt.d_model, opt.n_warmup_steps)
@@ -136,24 +128,21 @@ def train_model(MSHGAT, data_path):
 
         start = time.time()
         train_loss, train_accu = train_epoch(model, train_data, relation_graph, hypergraph_list, loss_func, optimizer)
-        # train_loss, train_accu = train_epoch(model, train_data, relation_graph, WatchCounts_list, loss_func, optimizer)
         print('  - (Training)   loss: {loss: 8.5f}, accuracy: {accu:3.3f} %, ' \
               'elapse: {elapse:3.3f} min'.format(
             loss=train_loss, accu=100 * train_accu,
             elapse=(time.time() - start) / 60))
 
-        if epoch_i >= 0:
+        if epoch_i >= 0: 
             start = time.time()
-            scores = t_epoch(model, valid_data, relation_graph, hypergraph_list)
-            # scores = t_epoch(model, valid_data, relation_graph, WatchCounts_list)
+            scores = test_epoch(model, valid_data, relation_graph, hypergraph_list)
             print('  - ( Validation )) ')
             for metric in scores.keys():
                 print(metric + ' ' + str(scores[metric]))
             print("Validation use time: ", (time.time() - start) / 60, "min")
 
             print('  - (Test) ')
-            scores = t_epoch(model, test_data, relation_graph, hypergraph_list)
-            # scores = t_epoch(model, test_data, relation_graph, WatchCounts_list)
+            scores = test_epoch(model, test_data, relation_graph, hypergraph_list)
             for metric in scores.keys():
                 print(metric + ' ' + str(scores[metric]))
 
@@ -163,13 +152,12 @@ def train_model(MSHGAT, data_path):
                 best_scores = scores
                 print("Save best model!!!")
                 torch.save(model.state_dict(), opt.save_path)
-
-    print(" -(Finished!!) \n Best scores: ")
+                
+    print(" -(Finished!!) \n Best scores: ")        
     for metric in best_scores.keys():
         print(metric + ' ' + str(best_scores[metric]))
-
-
-def t_epoch(model, validation_data, graph, hypergraph_list, k_list=[10,50,100]):
+                
+def test_epoch(model, validation_data, graph, hypergraph_list, k_list=[10, 50, 100]):
     ''' Epoch operation in evaluation phase '''
     model.eval()
 
@@ -180,21 +168,15 @@ def t_epoch(model, validation_data, graph, hypergraph_list, k_list=[10,50,100]):
 
     n_total_words = 0
     with torch.no_grad():
-        for i, batch in enumerate(
-                validation_data):  # tqdm(validation_data, mininterval=2, desc='  - (Validation) ', leave=False):
-            # print("Validation batch ", i)
+        for i, batch in enumerate(validation_data):  #tqdm(validation_data, mininterval=2, desc='  - (Validation) ', leave=False):
+            #print("Validation batch ", i)
             # prepare data
-            tgt, tgt_timestamp, tgt_idx = batch
+            tgt, tgt_timestamp, tgt_idx =  batch
             y_gold = tgt[:, 1:].contiguous().view(-1).detach().cpu().numpy()
-            # print("y_gold:", y_gold)
 
             # forward
-            pred = model(tgt, tgt_timestamp, tgt_idx, graph, hypergraph_list)
+            pred = model(tgt, tgt_timestamp, tgt_idx, graph, hypergraph_list )
             y_pred = pred.detach().cpu().numpy()
-            # print("y_pred:", y_pred)
-            # 打印y_gold的维度
-            # print("y_gold shape:", y_gold.shape)
-            # print("y_pred shape:", y_pred.shape)
 
             scores_batch, scores_len = metric.compute_metric(y_pred, y_gold, k_list)
             n_total_words += scores_len
@@ -208,74 +190,28 @@ def t_epoch(model, validation_data, graph, hypergraph_list, k_list=[10,50,100]):
 
     return scores
 
-def t_promote(model, validation_data, graph, hypergraph_list, k_list=[10,50,100]):
-    ''' Epoch operation in evaluation phase '''
-    model.eval()
 
-    scores = {}
-    for k in k_list:
-        scores['hits@' + str(k)] = 0
-        scores['map@' + str(k)] = 0
-
-    n_total_words = 0
-    with torch.no_grad():
-        for i, batch in enumerate(
-                validation_data):  # tqdm(validation_data, mininterval=2, desc='  - (Validation) ', leave=False):
-            print("Validation batch ", i)
-            # prepare data
-            tgt, tgt_timestamp, tgt_idx = batch
-            y_gold = tgt[:, 1:].contiguous().view(-1).detach().cpu().numpy()
-            # print("y_gold:", y_gold)
-            # 提取第一列数据
-            first_column = tgt[:, 0].contiguous().view(-1).detach().cpu().numpy()
-            # print('first_column:', first_column)
-
-            # forward
-            pred = model(tgt, tgt_timestamp, tgt_idx, graph, hypergraph_list)
-            y_pred = pred.detach().cpu().numpy()
-            # print("y_pred:", y_pred)
-            # # 打印y_gold的维度
-            # print("y_gold shape:", y_gold.shape)
-            # print("y_pred shape:", y_pred.shape)
-
-            scores_batch, scores_len = metric.compute_metric_pro(y_pred, y_gold, k_list,first_column)
-            n_total_words += scores_len
-            for k in k_list:
-                scores['hits@' + str(k)] += scores_batch['hits@' + str(k)] * scores_len
-                scores['map@' + str(k)] += scores_batch['map@' + str(k)] * scores_len
-
-    for k in k_list:
-        scores['hits@' + str(k)] = scores['hits@' + str(k)] / n_total_words
-        scores['map@' + str(k)] = scores['map@' + str(k)] / n_total_words
-
-    return scores
-
-def t_model(MSHGAT, data_path):
-    user_size, total_cascades, timestamps, train, valid, test = Split_data(data_path, opt.train_rate, opt.valid_rate,
-                                                                           load_dict=True)
-
-    # WatchCounts = WatchCount_list(data_path, WatchingCount)
+def test_model(MSHGAT, data_path):
+    
+    user_size, total_cascades, timestamps, train, valid, test = Split_data(data_path, opt.train_rate, opt.valid_rate, load_dict=True)
+    
     test_data = DataLoader(test, batch_size=opt.batch_size, load_dict=True, cuda=False)
-
+    
     relation_graph = ConRelationGraph(data_path)
-    # hypergraph_list = ConHyperGraphList(WatchCounts, total_cascades, timestamps, user_size)
-    WatchCounts_list = ConHyperGraphList(total_cascades, timestamps, user_size)
+    hypergraph_list = ConHyperGraphList(train, user_size)
 
     opt.user_size = user_size
 
-    model = MSHGAT(opt, dropout=opt.dropout)
+    model = MSHGAT(opt, dropout = opt.dropout)
     model.load_state_dict(torch.load(opt.save_path))
     model.cuda()
 
-    # scores = t_promote(model, test_data, relation_graph, hypergraph_list)
-    scores = t_epoch(model, test_data, relation_graph, WatchCounts_list)
+    scores = test_epoch(model, test_data, relation_graph, hypergraph_list)
     print('  - (Test) ')
     for metric in scores.keys():
         print(metric + ' ' + str(scores[metric]))
 
 
-if __name__ == "__main__":
-    model = MSHGAT
+if __name__ == "__main__": 
+    model = MSHGAT  
     train_model(model, opt.data_name)
-    # t_model(model, opt.data_name)
-
