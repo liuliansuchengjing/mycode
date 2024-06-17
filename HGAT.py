@@ -50,7 +50,7 @@ class DJconv(nn.Module):
         Du_e = Du_e.to(torch.float32)
 
         U = U.to(torch.float32)
-        M_u = torch.linalg.multi_dot([Du_v.cuda(), U]) + U
+        M_u = torch.linalg.multi_dot([Du_v, Hu, Du_e, Du_e, Hu.t(), Du_v, U]) + U
 
         U_out = torch.matmul(M_u.cuda(), self.weight.cuda()) + self.bias.cuda()
 
